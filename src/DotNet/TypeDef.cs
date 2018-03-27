@@ -7,7 +7,7 @@ using dnlib.Utils;
 using dnlib.DotNet.MD;
 using dnlib.DotNet.Emit;
 using dnlib.Threading;
-using System.Text;
+using dnlib.DotNet.Pdb;
 
 #if THREAD_SAFE
 using ThreadSafe = dnlib.Threading.Collections;
@@ -19,7 +19,7 @@ namespace dnlib.DotNet {
 	/// <summary>
 	/// A high-level representation of a row in the TypeDef table
 	/// </summary>
-	public abstract class TypeDef : ITypeDefOrRef, IHasCustomAttribute, IHasDeclSecurity, IMemberRefParent, ITypeOrMethodDef, IListListener<FieldDef>, IListListener<MethodDef>, IListListener<TypeDef>, IListListener<EventDef>, IListListener<PropertyDef>, IListListener<GenericParam>, IMemberRefResolver, IMemberDef {
+	public abstract class TypeDef : ITypeDefOrRef, IHasCustomAttribute, IHasDeclSecurity, IMemberRefParent, ITypeOrMethodDef, IHasCustomDebugInformation, IListListener<FieldDef>, IListListener<MethodDef>, IListListener<TypeDef>, IListListener<EventDef>, IListListener<PropertyDef>, IListListener<GenericParam>, IMemberRefResolver, IMemberDef {
 		/// <summary>
 		/// The row id in its table
 		/// </summary>
@@ -586,6 +586,33 @@ namespace dnlib.DotNet {
 		/// <inheritdoc/>
 		public bool HasCustomAttributes {
 			get { return CustomAttributes.Count > 0; }
+		}
+
+		/// <inheritdoc/>
+		public int HasCustomDebugInformationTag {
+			get { return 3; }
+		}
+
+		/// <inheritdoc/>
+		public bool HasCustomDebugInfos {
+			get { return CustomDebugInfos.Count > 0; }
+		}
+
+		/// <summary>
+		/// Gets all custom debug infos
+		/// </summary>
+		public ThreadSafe.IList<PdbCustomDebugInfo> CustomDebugInfos {
+			get {
+				if (customDebugInfos == null)
+					InitializeCustomDebugInfos();
+				return customDebugInfos;
+			}
+		}
+		/// <summary/>
+		protected ThreadSafe.IList<PdbCustomDebugInfo> customDebugInfos;
+		/// <summary>Initializes <see cref="customDebugInfos"/></summary>
+		protected virtual void InitializeCustomDebugInfos() {
+			Interlocked.CompareExchange(ref customDebugInfos, ThreadSafeListCreator.Create<PdbCustomDebugInfo>(), null);
 		}
 
 		/// <summary>
@@ -1622,10 +1649,33 @@ namespace dnlib.DotNet {
 		/// <param name="name">Property name</param>
 		/// <param name="sig">Property signature</param>
 		/// <returns>The property or <c>null</c> if it wasn't found</returns>
-		public PropertyDef FindPropertyCheckBaseType(UTF8String name, FieldSig sig) {
+		public PropertyDef FindPropertyCheckBaseType(UTF8String name, PropertySig sig) {
+			return FindPropertyCheckBaseType(name, sig, 0, null);
+		}
+
+		/// <summary>
+		/// Finds a property by checking this type or any of its base types
+		/// </summary>
+		/// <param name="name">Property name</param>
+		/// <param name="sig">Property signature</param>
+		/// <param name="options">Property signature comparison options</param>
+		/// <returns>The property or <c>null</c> if it wasn't found</returns>
+		public PropertyDef FindPropertyCheckBaseType(UTF8String name, PropertySig sig, SigComparerOptions options) {
+			return FindPropertyCheckBaseType(name, sig, options, null);
+		}
+
+		/// <summary>
+		/// Finds a property by checking this type or any of its base types
+		/// </summary>
+		/// <param name="name">Property name</param>
+		/// <param name="sig">Property signature</param>
+		/// <param name="options">Property signature comparison options</param>
+		/// <param name="sourceModule">The module that needs to find the property or <c>null</c></param>
+		/// <returns>The property or <c>null</c> if it wasn't found</returns>
+		public PropertyDef FindPropertyCheckBaseType(UTF8String name, PropertySig sig, SigComparerOptions options, ModuleDef sourceModule) {
 			var td = this;
 			while (td != null) {
-				var pd = td.FindProperty(name, sig);
+				var pd = td.FindProperty(name, sig, options, sourceModule);
 				if (pd != null)
 					return pd;
 				td = td.BaseType.ResolveTypeDef();
@@ -2178,6 +2228,13 @@ namespace dnlib.DotNet {
 			var list = readerModule.MetaData.GetCustomAttributeRidList(Table.TypeDef, origRid);
 			var tmp = new CustomAttributeCollection((int)list.Length, list, (list2, index) => readerModule.ReadCustomAttribute(((RidList)list2)[index]));
 			Interlocked.CompareExchange(ref customAttributes, tmp, null);
+		}
+
+		/// <inheritdoc/>
+		protected override void InitializeCustomDebugInfos() {
+			var list = ThreadSafeListCreator.Create<PdbCustomDebugInfo>();
+			readerModule.InitializeCustomDebugInfos(new MDToken(MDToken.Table, origRid), new GenericParamContext(this), list);
+			Interlocked.CompareExchange(ref customDebugInfos, list, null);
 		}
 
 		/// <inheritdoc/>

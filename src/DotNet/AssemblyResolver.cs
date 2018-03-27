@@ -90,7 +90,8 @@ namespace dnlib.DotNet {
 
 				var paths = Environment.GetEnvironmentVariable("MONO_PATH");
 				if (paths != null) {
-					foreach (var path in paths.Split(Path.PathSeparator)) {
+					foreach (var tmp in paths.Split(Path.PathSeparator)) {
+						var path = tmp.Trim();
 						if (path != string.Empty && Directory.Exists(path))
 							extraMonoPathsList.Add(path);
 					}
@@ -133,7 +134,8 @@ namespace dnlib.DotNet {
 
 			var prefixes = Environment.GetEnvironmentVariable("MONO_GAC_PREFIX");
 			if (!string.IsNullOrEmpty(prefixes)) {
-				foreach (var prefix in prefixes.Split(Path.PathSeparator)) {
+				foreach (var tmp in prefixes.Split(Path.PathSeparator)) {
+					var prefix = tmp.Trim();
 					if (prefix != string.Empty)
 						yield return prefix;
 				}
@@ -621,6 +623,8 @@ namespace dnlib.DotNet {
 		}
 
 		IEnumerable<string> GetDirs(string baseDir) {
+			if (!Directory.Exists(baseDir))
+				return emtpyStringArray;
 			var dirs = new List<string>();
 			try {
 				foreach (var di in new DirectoryInfo(baseDir).GetDirectories())
@@ -630,6 +634,7 @@ namespace dnlib.DotNet {
 			}
 			return dirs;
 		}
+		static readonly string[] emtpyStringArray = new string[0];
 
 		IEnumerable<string> FindAssembliesModuleSearchPaths(IAssembly assembly, ModuleDef sourceModule, bool matchExactly) {
 			string asmSimpleName = UTF8String.ToSystemStringOrEmpty(assembly.Name);
@@ -871,6 +876,8 @@ namespace dnlib.DotNet {
 		}
 
 		static void AddSilverlightDirs(IList<string> paths, string basePath) {
+			if (!Directory.Exists(basePath))
+				return;
 			try {
 				var di = new DirectoryInfo(basePath);
 				foreach (var dir in di.GetDirectories()) {

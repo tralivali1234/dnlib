@@ -8,10 +8,12 @@ mixed mode assemblies, doesn't read .NET assemblies the same way the [CLR](http:
 and many other missing features de4dot needed, dnlib was a necessity. The API
 is similar because it made porting de4dot to dnlib a lot easier.
 
-For another application using dnlib, see [ConfuserEx](https://github.com/yck1509/ConfuserEx/)
-(a .NET obfuscator). It uses many of the more advanced features of dnlib. Have
-a look at its writer code which gets executed during the assembly writing
-process.
+For other applications using dnlib, see [dnSpy](https://github.com/0xd4d/dnSpy) and
+[ConfuserEx](https://github.com/yck1509/ConfuserEx/) (a .NET obfuscator). They use
+many of the more advanced features of dnlib. Have a look at ConfuserEx' writer code
+which gets executed during the assembly writing process.
+
+Want to say thanks? Click the star at the top of the page.
 
 Compiling
 ---------
@@ -104,15 +106,9 @@ To detect it at runtime, use this code:
 PDB files
 ---------
 
-Right after opening the module, call one of its `LoadPdb()` methods. You can
-also pass in a `ModuleCreationOptions` to `ModuleDefMD.Load()` and if one of
-the PDB options is enabled, the PDB file will be opened before `Load()`
-returns.
-
-```csharp
-    var mod = ModuleDefMD.Load(@"C:\myfile.dll");
-    mod.LoadPdb();	// Will load C:\myfile.pdb if it exists
-```
+PDB files are read from disk by default. You can change this behaviour by
+creating a `ModuleCreationOptions` and passing it in to the code that creates
+a module.
 
 To save a PDB file, create a `ModuleWriterOptions` /
 `NativeModuleWriterOptions` and set its `WritePdb` property to `true`. By
@@ -120,9 +116,7 @@ default, it will create a PDB file with the same name as the output assembly
 but with a `.pdb` extension. You can override this by writing the PDB file
 name to `PdbFileName` or writing your own stream to `PdbStream`. If
 `PdbStream` is initialized, `PdbFileName` should also be initialized because
-the name of the PDB file will be written to the PE file. Another more
-advanced property is `CreatePdbSymbolWriter` which returns a `ISymbolWriter2`
-instance that dnlib will use.
+the name of the PDB file will be written to the PE file.
 
 ```csharp
     var mod = ModuleDefMD.Load(@"C:\myfile.dll");
@@ -133,10 +127,7 @@ instance that dnlib will use.
     mod.Write(@"C:\out.dll", wopts);
 ```
 
-There exist two different types of PDB readers, one is using the Microsoft
-COM PDB API available in diasymreader.dll (for Windows only), and the other
-one, which is now the default implementation, is a managed PDB reader. The PDB
-writer currently only uses the COM PDB API so will only work on Windows.
+dnlib supports Windows PDBs, portable PDBs and embedded portable PDBs.
 
 Strong name sign an assembly
 ----------------------------
@@ -214,6 +205,28 @@ Enhanced strong name signing with key migration:
     // Write and strong name sign the assembly
     mod.Write(@"C:\out\file.dll", opts);
 ```
+
+Exporting managed methods (DllExport)
+-------------------------------------
+
+dnlib supports exporting managed methods so the managed DLL file can be loaded by native code and then executed. .NET Framework supports this feature, but there's no guarantee that other CLRs (eg. .NET Core or Mono/Unity) support this feature.
+
+The `MethodDef` class has an `ExportInfo` property. If it gets initialized, the method gets exported when saving the module. At most 65536 (2^16) methods can be exported. This is a PE file limitation, not a dnlib limitation.
+
+Exported methods should not be generic.
+
+The method's calling convention should be changed to eg. stdcall, or cdecl, by adding an optional modifier to `MethodDef.MethodSig.RetType`. It must be a `System.Runtime.CompilerServices.CallConvCdecl`, `System.Runtime.CompilerServices.CallConvStdcall`, `System.Runtime.CompilerServices.CallConvThiscall`, or a `System.Runtime.CompilerServices.CallConvFastcall`, eg.:
+
+```C#
+var type = method.MethodSig.RetType;
+type = new CModOptSig(module.CorLibTypes.GetTypeRef("System.Runtime.CompilerServices", "CallConvCdecl"), type);
+method.MethodSig.RetType = type;
+```
+
+Requirements:
+
+- The assembly platform must be x86, x64, IA-64 or ARM (ARM64 isn't supported at the moment). AnyCPU assemblies are not supported. This is as simple as changing (if needed) `ModuleWriterOptions.PEHeadersOptions.Machine` when saving the file. x86 files should set `32-bit required` flag and clear `32-bit preferred` flag in the COR20 header.
+- It must be a DLL file (see `ModuleWriterOptions.PEHeadersOptions.Characteristics`). The file will fail to load at runtime if it's an EXE file.
 
 Type classes
 ------------

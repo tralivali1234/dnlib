@@ -23,7 +23,7 @@ namespace dnlib.DotNet {
 	/// <summary>
 	/// A high-level representation of a row in the Module table
 	/// </summary>
-	public abstract class ModuleDef : IHasCustomAttribute, IResolutionScope, IDisposable, IListListener<TypeDef>, IModule, ITypeDefFinder, IDnlibDef, ITokenResolver {
+	public abstract class ModuleDef : IHasCustomAttribute, IHasCustomDebugInformation, IResolutionScope, IDisposable, IListListener<TypeDef>, IModule, ITypeDefFinder, IDnlibDef, ITokenResolver, ISignatureReaderHelper {
 		/// <summary>Default characteristics</summary>
 		protected const Characteristics DefaultCharacteristics = Characteristics.ExecutableImage | Characteristics._32BitMachine;
 
@@ -166,6 +166,33 @@ namespace dnlib.DotNet {
 			Interlocked.CompareExchange(ref customAttributes, new CustomAttributeCollection(), null);
 		}
 
+		/// <inheritdoc/>
+		public int HasCustomDebugInformationTag {
+			get { return 7; }
+		}
+
+		/// <inheritdoc/>
+		public bool HasCustomDebugInfos {
+			get { return CustomDebugInfos.Count > 0; }
+		}
+
+		/// <summary>
+		/// Gets all custom debug infos
+		/// </summary>
+		public ThreadSafe.IList<PdbCustomDebugInfo> CustomDebugInfos {
+			get {
+				if (customDebugInfos == null)
+					InitializeCustomDebugInfos();
+				return customDebugInfos;
+			}
+		}
+		/// <summary/>
+		protected ThreadSafe.IList<PdbCustomDebugInfo> customDebugInfos;
+		/// <summary>Initializes <see cref="customDebugInfos"/></summary>
+		protected virtual void InitializeCustomDebugInfos() {
+			Interlocked.CompareExchange(ref customDebugInfos, ThreadSafeListCreator.Create<PdbCustomDebugInfo>(), null);
+		}
+
 		/// <summary>
 		/// Gets the module's assembly. To set this value, add this <see cref="ModuleDef"/>
 		/// to <see cref="AssemblyDef.Modules"/>.
@@ -227,6 +254,7 @@ namespace dnlib.DotNet {
 #endif
 				nativeEntryPoint = value;
 				managedEntryPoint = null;
+				Cor20HeaderFlags |= ComImageFlags.NativeEntryPoint;
 				nativeAndManagedEntryPoint_initialized = true;
 #if THREAD_SAFE
 				} finally { theLock.ExitWriteLock(); }
@@ -249,6 +277,7 @@ namespace dnlib.DotNet {
 #endif
 				nativeEntryPoint = 0;
 				managedEntryPoint = value;
+				Cor20HeaderFlags &= ~ComImageFlags.NativeEntryPoint;
 				nativeAndManagedEntryPoint_initialized = true;
 #if THREAD_SAFE
 				} finally { theLock.ExitWriteLock(); }
@@ -924,6 +953,10 @@ namespace dnlib.DotNet {
 				tdf.Dispose();
 				typeDefFinder = null;
 			}
+			var ps = pdbState;
+			if (ps != null)
+				ps.Dispose();
+			pdbState = null;
 		}
 
 		/// <summary>
@@ -971,9 +1004,10 @@ namespace dnlib.DotNet {
 		}
 
 		uint GetNextFreeRid(Table table) {
+			var lastUsedRids = this.lastUsedRids;
 			if ((uint)table >= lastUsedRids.Length)
 				return 0;
-			return (uint)Interlocked.Increment(ref lastUsedRids[(int)table]);
+			return (uint)Interlocked.Increment(ref lastUsedRids[(int)table]) & 0x00FFFFFF;
 		}
 
 		/// <summary>
@@ -1174,8 +1208,9 @@ namespace dnlib.DotNet {
 		/// <summary>
 		/// Creates a new <see cref="dnlib.DotNet.Pdb.PdbState"/>
 		/// </summary>
-		public void CreatePdbState() {
-			SetPdbState(new PdbState());
+		/// <param name="pdbFileKind">PDB file kind</param>
+		public void CreatePdbState(PdbFileKind pdbFileKind) {
+			SetPdbState(new PdbState(this, pdbFileKind));
 		}
 
 		/// <summary>
@@ -1213,6 +1248,16 @@ namespace dnlib.DotNet {
 		/// can be 32-bit or 64-bit</param>
 		/// <returns>Size of a pointer (4 or 8)</returns>
 		public int GetPointerSize(int defaultPointerSize) {
+			return GetPointerSize(defaultPointerSize, defaultPointerSize);
+		}
+
+		/// <summary>
+		/// Returns the size of a pointer
+		/// </summary>
+		/// <param name="defaultPointerSize">Default pointer size</param>
+		/// <param name="prefer32bitPointerSize">Pointer size if it's prefer-32-bit (should usually be 4)</param>
+		/// <returns></returns>
+		public int GetPointerSize(int defaultPointerSize, int prefer32bitPointerSize) {
 			var machine = Machine;
 			if (machine == Machine.AMD64 || machine == Machine.IA64 || machine == Machine.ARM64)
 				return 8;
@@ -1247,7 +1292,7 @@ namespace dnlib.DotNet {
 
 			case ComImageFlags._32BitRequired | ComImageFlags._32BitPreferred:
 				// Platform neutral but prefers to be 32-bit
-				return defaultPointerSize;
+				return prefer32bitPointerSize;
 			}
 
 			return defaultPointerSize;
@@ -1518,6 +1563,17 @@ namespace dnlib.DotNet {
 			var newVer = newOne.Version;
 			return foundVer == null || (newVer != null && newVer >= foundVer);
 		}
+
+		ITypeDefOrRef ISignatureReaderHelper.ResolveTypeDefOrRef(uint codedToken, GenericParamContext gpContext) {
+			uint token;
+			if (!CodedToken.TypeDefOrRef.Decode(codedToken, out token))
+				return null;
+			return ResolveToken(token) as ITypeDefOrRef;
+		}
+
+		TypeSig ISignatureReaderHelper.ConvertRTInternalAddress(IntPtr address) {
+			return null;
+		}
 	}
 
 	/// <summary>
@@ -1601,6 +1657,13 @@ namespace dnlib.DotNet {
 			var list = readerModule.MetaData.GetCustomAttributeRidList(Table.Module, origRid);
 			var tmp = new CustomAttributeCollection((int)list.Length, list, (list2, index) => readerModule.ReadCustomAttribute(((RidList)list2)[index]));
 			Interlocked.CompareExchange(ref customAttributes, tmp, null);
+		}
+
+		/// <inheritdoc/>
+		protected override void InitializeCustomDebugInfos() {
+			var list = ThreadSafeListCreator.Create<PdbCustomDebugInfo>();
+			readerModule.InitializeCustomDebugInfos(new MDToken(MDToken.Table, origRid), new GenericParamContext(), list);
+			Interlocked.CompareExchange(ref customDebugInfos, list, null);
 		}
 
 		/// <inheritdoc/>

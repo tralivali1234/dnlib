@@ -59,6 +59,8 @@ namespace dnlib.DotNet.Writer {
 		/// <exception cref="IOException">Not all bytes were written</exception>
 		public static void VerifyWriteTo(this IChunk chunk, BinaryWriter writer) {
 			long pos = writer.BaseStream.Position;
+			// Uncomment this to add some debug info, useful when comparing old vs new version
+			//System.Diagnostics.Debug.WriteLine(string.Format(" RVA 0x{0:X8} OFFS 0x{1:X8} VSIZE 0x{2:X8} {3}", (uint)chunk.RVA, (uint)chunk.FileOffset, chunk.GetVirtualSize(), chunk.GetType().FullName));
 			chunk.WriteTo(writer);
 			if (writer.BaseStream.Position - pos != chunk.GetFileLength())
 				throw new IOException("Did not write all bytes");
@@ -75,21 +77,6 @@ namespace dnlib.DotNet.Writer {
 			else {
 				writer.Write((uint)chunk.RVA);
 				writer.Write(chunk.GetVirtualSize());
-			}
-		}
-
-		/// <summary>
-		/// Writes a data directory
-		/// </summary>
-		/// <param name="writer">Writer</param>
-		/// <param name="chunk">The data</param>
-		/// <param name="size">Fixed size of <paramref name="chunk"/></param>
-		internal static void WriteDataDirectory(this BinaryWriter writer, IChunk chunk, uint size) {
-			if (chunk == null || chunk.GetVirtualSize() == 0 || size == 0)
-				writer.Write(0UL);
-			else {
-				writer.Write((uint)chunk.RVA);
-				writer.Write(size);
 			}
 		}
 	}

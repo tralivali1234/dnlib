@@ -1,6 +1,6 @@
 // dnlib: See LICENSE.txt for more info
 
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using dnlib.DotNet.Pdb;
 using dnlib.PE;
 using dnlib.Threading;
@@ -59,7 +59,6 @@ namespace dnlib.DotNet.Emit {
 		readonly ThreadSafe.IList<Instruction> instructions;
 		readonly ThreadSafe.IList<ExceptionHandler> exceptionHandlers;
 		readonly LocalList localList;
-		PdbScope pdbScope;
 
 		/// <summary>
 		/// Size of a small header
@@ -164,19 +163,20 @@ namespace dnlib.DotNet.Emit {
 		}
 
 		/// <summary>
-		/// Gets/sets the PDB scope. This is <c>null</c> if no PDB has been loaded or if there's
-		/// no PDB scope for this method.
+		/// Gets/sets the PDB method. This is <c>null</c> if no PDB has been loaded or if there's
+		/// no PDB info for this method.
 		/// </summary>
-		public PdbScope Scope {
-			get { return pdbScope; }
-			set { pdbScope = value; }
+		public PdbMethod PdbMethod {
+			get { return pdbMethod; }
+			set { pdbMethod = value; }
 		}
+		PdbMethod pdbMethod;
 
 		/// <summary>
-		/// <c>true</c> if <see cref="Scope"/> is not <c>null</c>
+		/// <c>true</c> if <see cref="PdbMethod"/> is not <c>null</c>
 		/// </summary>
-		public bool HasScope {
-			get { return pdbScope != null; }
+		public bool HasPdbMethod {
+			get { return PdbMethod != null; }
 		}
 
 		/// <summary>
