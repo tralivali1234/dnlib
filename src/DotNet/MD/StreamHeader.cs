@@ -16,25 +16,19 @@ namespace dnlib.DotNet.MD {
 		readonly string name;
 
 		/// <summary>
-		/// The offset of the stream relative to the start of the MetaData header
+		/// The offset of the stream relative to the start of the metadata header
 		/// </summary>
-		public uint Offset {
-			get { return offset; }
-		}
+		public uint Offset => offset;
 
 		/// <summary>
 		/// The size of the stream
 		/// </summary>
-		public uint StreamSize {
-			get { return streamSize; }
-		}
+		public uint StreamSize => streamSize;
 
 		/// <summary>
 		/// The name of the stream
 		/// </summary>
-		public string Name {
-			get { return name; }
-		}
+		public string Name => name;
 
 		/// <summary>
 		/// Constructor
@@ -42,17 +36,17 @@ namespace dnlib.DotNet.MD {
 		/// <param name="reader">PE file reader pointing to the start of this section</param>
 		/// <param name="verify">Verify section</param>
 		/// <exception cref="BadImageFormatException">Thrown if verification fails</exception>
-		public StreamHeader(IImageStream reader, bool verify) {
-			SetStartOffset(reader);
-			this.offset = reader.ReadUInt32();
-			this.streamSize = reader.ReadUInt32();
-			this.name = ReadString(reader, 32, verify);
-			SetEndoffset(reader);
+		public StreamHeader(ref DataReader reader, bool verify) {
+			SetStartOffset(ref reader);
+			offset = reader.ReadUInt32();
+			streamSize = reader.ReadUInt32();
+			name = ReadString(ref reader, 32, verify);
+			SetEndoffset(ref reader);
 			if (verify && offset + size < offset)
 				throw new BadImageFormatException("Invalid stream header");
 		}
 
-		static string ReadString(IImageStream reader, int maxLen, bool verify) {
+		static string ReadString(ref DataReader reader, int maxLen, bool verify) {
 			var origPos = reader.Position;
 			var sb = new StringBuilder(maxLen);
 			int i;
@@ -65,7 +59,7 @@ namespace dnlib.DotNet.MD {
 			if (verify && i == maxLen)
 				throw new BadImageFormatException("Invalid stream name string");
 			if (i != maxLen)
-				reader.Position = origPos + ((i + 1 + 3) & ~3);
+				reader.Position = origPos + (((uint)i + 1 + 3) & ~3U);
 			return sb.ToString();
 		}
 	}
