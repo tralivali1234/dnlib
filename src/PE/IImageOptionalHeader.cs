@@ -1,6 +1,6 @@
 // dnlib: See LICENSE.txt for more info
 
-﻿using dnlib.IO;
+using dnlib.IO;
 
 namespace dnlib.PE {
 	/// <summary>
@@ -158,7 +158,7 @@ namespace dnlib.PE {
 		uint NumberOfRvaAndSizes { get; }
 
 		/// <summary>
-		/// Returns the DataDirectories field
+		/// Returns the DataDirectories field. This array contains exactly 16 elements.
 		/// </summary>
 		ImageDataDirectory[] DataDirectories { get; }
 	}

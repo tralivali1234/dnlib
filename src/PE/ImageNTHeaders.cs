@@ -36,7 +36,8 @@ namespace dnlib.PE {
 		public ImageNTHeaders(ref DataReader reader, bool verify) {
 			SetStartOffset(ref reader);
 			signature = reader.ReadUInt32();
-			if (verify && signature != 0x4550)
+			// Mono only checks the low 2 bytes
+			if (verify && (ushort)signature != 0x4550)
 				throw new BadImageFormatException("Invalid NT headers signature");
 			imageFileHeader = new ImageFileHeader(ref reader, verify);
 			imageOptionalHeader = CreateImageOptionalHeader(ref reader, verify);
@@ -53,11 +54,11 @@ namespace dnlib.PE {
 		IImageOptionalHeader CreateImageOptionalHeader(ref DataReader reader, bool verify) {
 			ushort magic = reader.ReadUInt16();
 			reader.Position -= 2;
-			switch (magic) {
-			case 0x010B: return new ImageOptionalHeader32(ref reader, imageFileHeader.SizeOfOptionalHeader, verify);
-			case 0x020B: return new ImageOptionalHeader64(ref reader, imageFileHeader.SizeOfOptionalHeader, verify);
-			default: throw new BadImageFormatException("Invalid optional header magic");
-			}
+			return magic switch {
+				0x010B => new ImageOptionalHeader32(ref reader, imageFileHeader.SizeOfOptionalHeader, verify),
+				0x020B => new ImageOptionalHeader64(ref reader, imageFileHeader.SizeOfOptionalHeader, verify),
+				_ => throw new BadImageFormatException("Invalid optional header magic"),
+			};
 		}
 	}
 }

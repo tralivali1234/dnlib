@@ -43,7 +43,15 @@ namespace dnlib.PE {
 			imageNTHeaders = new ImageNTHeaders(ref reader, verify);
 
 			reader.Position = (uint)imageNTHeaders.OptionalHeader.StartOffset + imageNTHeaders.FileHeader.SizeOfOptionalHeader;
-			imageSectionHeaders = new ImageSectionHeader[imageNTHeaders.FileHeader.NumberOfSections];
+			int numSections = imageNTHeaders.FileHeader.NumberOfSections;
+			if (numSections > 0) {
+				// Mono doesn't verify the section count
+				var tempReader = reader;
+				tempReader.Position += 0x14;
+				uint firstSectionOffset = tempReader.ReadUInt32();
+				numSections = Math.Min(numSections, (int)((firstSectionOffset - reader.Position) / 0x28));
+			}
+			imageSectionHeaders = new ImageSectionHeader[numSections];
 			for (int i = 0; i < imageSectionHeaders.Length; i++)
 				imageSectionHeaders[i] = new ImageSectionHeader(ref reader, verify);
 		}
@@ -83,7 +91,7 @@ namespace dnlib.PE {
 		/// <returns>The RVA</returns>
 		public RVA ToRVA(FileOffset offset) {
 			var section = ToImageSectionHeader(offset);
-			if (section != null)
+			if (section is not null)
 				return (uint)(offset - section.PointerToRawData) + section.VirtualAddress;
 			return (RVA)offset;
 		}
@@ -95,7 +103,7 @@ namespace dnlib.PE {
 		/// <returns>The file offset</returns>
 		public FileOffset ToFileOffset(RVA rva) {
 			var section = ToImageSectionHeader(rva);
-			if (section != null)
+			if (section is not null)
 				return (FileOffset)(rva - section.VirtualAddress + section.PointerToRawData);
 			return (FileOffset)rva;
 		}
